@@ -1,3 +1,26 @@
+/** Example
+ *  -------
+var impl = Memory.alloc(Process.pageSize);
+
+Memory.patchCode(impl, Process.pageSize, function (code) {
+  var cw = new X86Writer(code, { pc: impl });
+
+  var libcPuts = Module.findExportByName(null, 'puts');
+  var rl = new X86Relocator(libcPuts, cw);
+
+  while (rl.readOne() !== 0) {
+    console.log('Relocating: ' + rl.input.toString());
+    rl.writeOne();
+  }
+
+  cw.flush();
+});
+
+var puts = new NativeFunction(impl, 'int', ['pointer']);
+puts(Memory.allocUtf8String('Hello!'));
+ */
+
+
 /** Symbol Finder */
 function getSymbolAddress(lib, symName) {
     var sym = Module.findExportByName(lib, symName);
@@ -115,8 +138,24 @@ function openAndReadLibrary(library_path) {
 /** Load the hook library into the process
  *  --------------------------------------
  */
-function loadLibrary(library_path) {
-
+function loadHookLibrary(library_path) {
+    library_path_ptr = Memory.allocUtf8String(library_path);
+    var dlopen_sym = getSymbolAddress('libc.so', 'dlopen');
+    console.log('[+] dlopen --> ' + dlopen_sym.toString());
+    var dlopen = new NativeFunction(dlopen_sym, 'pointer', ['pointer', 'int'])
+    console.log('[+] Loading --> libhook.so [!]');
+    dlopen(library_path_ptr, 2);
+    var modules = Process.enumerateModulesSync()
+    for(m in modules) {
+        if(modules[m].name == "libhook.so") {
+            console.log('[+] libhook.so loaded [!]');
+            var hookFunc = getSymbolAddress('libhook.so', '_Z8hookFuncv');
+            if(hookFunc) {
+                console.log('[+] hookFunc --> ' + hookFunc.toString());
+                return hookFunc;
+            }
+        }
+    }
 }
 
 // Globals
@@ -126,3 +165,4 @@ var dlopen = getSymbolAddress('libc.so', 'dlopen')
 console.log('[+] dlopen --> ' + dlopen.toString());
 var elfDataView = openAndReadLibrary('/data/data/com.versprite.poc/lib/libnative-lib.so');
 console.log('[+] Signature --> ' + elfDataView.getInt8(1).toString(16), elfDataView.getInt8(2).toString(16), elfDataView.getInt8(3).toString(16));
+loadHookLibrary('/data/local/tmp/libhook.so');
