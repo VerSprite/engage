@@ -35,8 +35,6 @@ function getSymbolAddress(lib, symName) {
  * 
  * Find the target function address
  * ---------------------------------
- * This function more complex than it needs to be, but it shows how to utlitize Frida's Process
- * and Module API(s)
 **/
 function getTargetFuncAddress() {
     var modules = Process.enumerateModulesSync()
@@ -44,18 +42,7 @@ function getTargetFuncAddress() {
         if(modules[m].name) {
             if(modules[m].name == 'libnative-lib.so') {
                 console.log('[+] Found --> libnative-lib.so [!]');
-                var exports = Module.enumerateExportsSync(modules[m].name);
-                for(e in exports) {
-                    if(exports[e].name == 'Java_com_versprite_poc_Receiver_nativeFunc') {
-                        console.log('[+] Found --> Java_com_versprite_poc_Receiver_nativeFunc [!]');
-                        var sym = Module.findExportByName(modules[m].name, exports[e].name);
-                        if(sym) {
-                            return sym;
-                        } else {
-                            return NaN;
-                        }
-                    }
-                }
+                return getSymbolAddress('libnative-lib.so', 'Java_com_versprite_poc_Receiver_nativeFunc');
             }
         }
     }
