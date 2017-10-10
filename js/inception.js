@@ -20,8 +20,9 @@ var puts = new NativeFunction(impl, 'int', ['pointer']);
 puts(Memory.allocUtf8String('Hello!'));
  */
 
-
-/** Symbol Finder */
+/**
+ * 
+ */
 function getSymbolAddress(lib, symName) {
     var sym = Module.findExportByName(lib, symName);
     if(sym) {
@@ -31,11 +32,9 @@ function getSymbolAddress(lib, symName) {
     }
 }
 
-/**  
+/**
  * 
- * Find the target function address
- * ---------------------------------
-**/
+ */
 function getTargetFuncAddress() {
     var modules = Process.enumerateModulesSync()
     for(m in modules) {
@@ -48,10 +47,9 @@ function getTargetFuncAddress() {
     }
 }
 
-
-/** Get the size of a file
- *  -----------------------
- *  http://codewiki.wikidot.com/c:system-calls:fstat
+/**
+ * 
+ * @param {*} fd 
  */
 function getFileSize(fd) {
     // TODO Get the actual size of this structure 
@@ -82,13 +80,9 @@ function getFileSize(fd) {
     }
 }
 
-function handleElf(dv) {
-    dataView = dv;
-}
-
-
-/** Open a read from a shared-library and return a DataView
- *  -------------------------------------------------------
+/**
+ * 
+ * @param {*} library_path 
  */
 function openAndReadLibrary(library_path) {
     library_path_ptr = Memory.allocUtf8String(library_path);
@@ -105,25 +99,25 @@ function openAndReadLibrary(library_path) {
     var size = getFileSize(fd);
     var read_sym = getSymbolAddress('libc.so', 'read');
     var read = new NativeFunction(read_sym, 'int', ['int', 'pointer', 'long']);
-    var elfData = Memory.alloc(size);
-    var ret = read(fd, elfData, size);
+    var rawElf = Memory.alloc(size);
+    var ret = read(fd, rawElf, size);
     if(ret < 0) {
         console.log('[+] read --> failed [!]');
     }
     console.log('[+] read --> ' + size + ' bytes [!]');
-    console.log(hexdump(elfData, {
+    console.log(hexdump(rawElf, {
         offset: 0,
         length: 20,
         header: true,
         ansi: true
       }));
-    var buffer = Memory.readByteArray(elfData, size);
-    var dataView = new DataView(buffer);
-    return dataView;
+
+    return rawElf
 }
 
-/** Load the hook library into the process
- *  --------------------------------------
+/**
+ * 
+ * @param {*} library_path 
  */
 function loadHookLibrary(library_path) {
     library_path_ptr = Memory.allocUtf8String(library_path);
@@ -145,11 +139,96 @@ function loadHookLibrary(library_path) {
     }
 }
 
-// Globals
-var nativeFunc = getTargetFuncAddress();
-console.log('[+] Java_com_versprite_poc_Receiver_nativeFunc --> ' + nativeFunc.toString());
-var dlopen = getSymbolAddress('libc.so', 'dlopen')
-console.log('[+] dlopen --> ' + dlopen.toString());
-var elfDataView = openAndReadLibrary('/data/data/com.versprite.poc/lib/libnative-lib.so');
-console.log('[+] Signature --> ' + elfDataView.getInt8(1).toString(16), elfDataView.getInt8(2).toString(16), elfDataView.getInt8(3).toString(16));
-loadHookLibrary('/data/local/tmp/libhook.so');
+/**
+ * 
+ * @param {*} rawElf 
+ */
+function processELFHeader32(rawElf){
+    var buffer = Memory.readByteArray(rawElf, 0x34);
+    var elfHeaderDataView = new DataView(buffer);
+    var e_type = elfHeaderDataView.getInt32(0x10, true);
+    var e_machine = elfHeaderDataView.getInt16(0x12, true);
+    var e_version = elfHeaderDataView.getUint32(0x14, true);
+    var e_entry = elfHeaderDataView.getInt32(0x18, true);
+    var e_phoff = elfHeaderDataView.getInt32(0x1C, true);
+    var e_shoff = elfHeaderDataView.getInt32(0x20, true);
+    var e_flags = elfHeaderDataView.getInt32(0x24, true);
+    var e_ehsize = elfHeaderDataView.getInt16(0x28, true);
+    var e_phentsize = elfHeaderDataView.getInt16(0x2A, true);
+    var e_phnum = elfHeaderDataView.getInt16(0x2C, true);
+    var e_shentsize = elfHeaderDataView.getInt16(0x2E, true);
+    var e_shnum = elfHeaderDataView.getInt16(0x30, true);
+    var e_shtrndx = elfHeaderDataView.getInt16(0x32, true);
+    console.log('\n[+] HEADERS -----------------------------')
+    console.log('[+] e_type      --> ' + e_type.toString());
+    console.log('[+] e_machine   --> ' + e_machine.toString());
+    console.log('[+] e_version   --> ' + e_version.toString());
+    console.log('[+] e_entry     --> ' + e_entry.toString());
+    console.log('[+] e_phoff     --> ' + e_phoff.toString());
+    console.log('[+] e_shoff     --> 0x' + e_shoff.toString(16));
+    console.log('[+] e_flags     --> 0x' + e_flags.toString(16));
+    console.log('[+] e_ehsize    --> ' + e_ehsize.toString());
+    console.log('[+] e_phentsize --> ' + e_phentsize.toString());
+    console.log('[+] e_phnum     --> ' + e_phnum.toString());
+    console.log('[+] e_shentsize --> ' + e_shentsize.toString());
+    console.log('[+] e_shnum     --> ' + e_shnum.toString());
+    console.log('[+] e_shtrndx   --> ' + e_shtrndx .toString());
+    return [e_shoff, e_shentsize, e_shnum];
+}
+
+/**
+ * 
+ * @param {*} rawElf 
+ * @param {*} sectionOffset 
+ */
+function getShstrtab32(rawElf, sectionOffset) {
+    var buffer = Memory.readByteArray(rawElf, 0x34);
+    var elfHeaderDataView = new DataView(buffer);
+    var shstrtabIndex = elfHeaderDataView.getInt16(50, true);
+    shstrtabHeaderOffset = sectionOffset + shstrtabIndex * 40;
+    var shstrtabHeaderBuffer = Memory.readByteArray(rawElf.add(shstrtabHeaderOffset), 40);
+    var shstrtabHeaderDataView = new DataView(shstrtabHeaderBuffer);
+    var shstrtabDataOffset = shstrtabHeaderDataView.getInt32(16, true);
+    var shstrtabDataSize = shstrtabHeaderDataView.getInt32(20, true);
+    return shstrtabDataOffset;
+}
+
+/**
+ * 
+ * @param {*} sectionData [0] = offset, [1] = size, [2] = entries
+ */
+function processSectionHeaders32(rawElf, sectionData) {
+    console.log('\n[+] SECTIONS -----------------------------')
+    var shstrtabDataOffset = getShstrtab32(rawElf, sectionData[0]);
+    var sectionIndex = 0;
+    for(var i = 0; i < sectionData[2] ; sectionIndex += 40) {
+        var index = sectionData[0] + sectionIndex;
+        var buffer = Memory.readByteArray(rawElf.add(index), sectionData[1]);
+        var sectionDataView = new DataView(buffer);
+        var shstrabOffset = sectionDataView.getInt32(0, true);
+        var sectionName = Memory.readUtf8String(rawElf.add(shstrtabDataOffset + shstrabOffset));
+        var s_addr = sectionDataView.getInt32(12, true);
+        var s_offset = sectionDataView.getInt32(16, true);
+        var s_size = sectionDataView.getInt32(20, true);
+        if(sectionName) {
+            console.log('[+] ' + sectionName + ' : 0x' + index.toString(16));
+            console.log('[+] \ts_addr   --> 0x' + s_addr.toString(16) );
+            console.log('[+] \ts_offset --> 0x' + s_offset.toString(16) );
+            console.log('[+] \ts_size   --> 0x' + s_size.toString(16) );
+        }
+        i++;
+    }
+}
+
+/**
+ * 
+ * @param {*} elf_path 
+ */
+function elfParser32(elf_path) {
+    console.log('[+] Running elf parser [!]');
+    var rawElf = openAndReadLibrary(elf_path);
+    var sectionHeaderData = processELFHeader32(rawElf);
+    processSectionHeaders32(rawElf, sectionHeaderData);
+}
+
+elfParser32('/data/data/com.versprite.poc/lib/libnative-lib.so');
