@@ -111,7 +111,6 @@ function openAndReadLibrary(library_path) {
         header: true,
         ansi: true
       }));
-
     return rawElf
 }
 
@@ -173,7 +172,8 @@ function processELFHeader32(rawElf){
     console.log('[+] e_shentsize --> ' + e_shentsize.toString());
     console.log('[+] e_shnum     --> ' + e_shnum.toString());
     console.log('[+] e_shtrndx   --> ' + e_shtrndx .toString());
-    return [e_shoff, e_shentsize, e_shnum];
+    // Return elf header data
+    return [e_phoff, e_shoff, e_phentsize, e_phnum, e_shentsize, e_shnum];
 }
 
 /**
@@ -193,17 +193,49 @@ function getShstrtab32(rawElf, sectionOffset) {
     return shstrtabDataOffset;
 }
 
+
 /**
- * 
- * @param {*} sectionData [0] = offset, [1] = size, [2] = entries
+ * [e_phoff, e_shoff, e_phentsize, e_phnum, e_shentsize, e_shnum]
  */
-function processSectionHeaders32(rawElf, sectionData) {
+function processProgramHeaders32(rawElf, elfHeader) {
+    console.log('\n[+] SEGMENTS -----------------------------')
+    var programHeaderIndex = 0;
+    for(var i = 0 ; i < elfHeader[3] ; programHeaderIndex += elfHeader[2]) {
+        var index = elfHeader[0] + programHeaderIndex;
+        var buffer = Memory.readByteArray(rawElf.add(index), elfHeader[2]);
+        var programHeaderView = new DataView(buffer);
+        var p_type = programHeaderView.getInt32(0, true);
+        switch(p_type) {
+            case 6: // PT_PHDR
+                console.log('[+] segment --> 0x' + index.toString(16) + ' : PT_PHDR');
+                break;
+            case 1: // PT_LOAD
+                console.log('[+] segment --> 0x' + index.toString(16) + ' : PT_LOAD');
+                break;
+            case 2: // PT_DYNAMIC
+                console.log('[+] segment --> 0x' + index.toString(16) + ' : PT_DYNAMIC');
+                break;
+            case 4: // PT_NOTE
+                console.log('[+] segment --> 0x' + index.toString(16) + ' : PT_NOTE ');
+                break;
+        }
+        i++;
+    }
+}
+
+/**
+ * [e_phoff, e_shoff, e_phentsize, e_phnum, e_shentsize, e_shnum]
+ */
+function processSectionHeaders32(rawElf, elfHeader) {
     console.log('\n[+] SECTIONS -----------------------------')
-    var shstrtabDataOffset = getShstrtab32(rawElf, sectionData[0]);
+    var shstrtabDataOffset = getShstrtab32(rawElf, elfHeader[1]);
     var sectionIndex = 0;
-    for(var i = 0; i < sectionData[2] ; sectionIndex += 40) {
-        var index = sectionData[0] + sectionIndex;
-        var buffer = Memory.readByteArray(rawElf.add(index), sectionData[1]);
+    // for i is less than the number of sections += size of each section
+    for(var i = 0; i < elfHeader[5] ; sectionIndex += 40) {
+        // Calculate the offset into the section table
+        var index = elfHeader[1] + sectionIndex;
+        // Read in a section at the offset into the section table
+        var buffer = Memory.readByteArray(rawElf.add(index), elfHeader[4]);
         var sectionDataView = new DataView(buffer);
         var shstrabOffset = sectionDataView.getInt32(0, true);
         var sectionName = Memory.readUtf8String(rawElf.add(shstrtabDataOffset + shstrabOffset));
@@ -227,8 +259,9 @@ function processSectionHeaders32(rawElf, sectionData) {
 function elfParser32(elf_path) {
     console.log('[+] Running elf parser [!]');
     var rawElf = openAndReadLibrary(elf_path);
-    var sectionHeaderData = processELFHeader32(rawElf);
-    processSectionHeaders32(rawElf, sectionHeaderData);
+    var elfHeader = processELFHeader32(rawElf);
+    processProgramHeaders32(rawElf, elfHeader);
+    processSectionHeaders32(rawElf, elfHeader);
 }
 
 elfParser32('/data/data/com.versprite.poc/lib/libnative-lib.so');
