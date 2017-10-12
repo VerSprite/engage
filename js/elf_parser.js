@@ -44,7 +44,7 @@ function getFileSize(fd) {
         header: true,
         ansi: true
       }));
-    var size = Memory.readU32(statBuff.add(48))
+      var size = Memory.readS32(statBuff.add(0x30))
     if(size > 0) {
         console.log('[+] size of fd --> ' + size.toString());
         return size;
@@ -73,9 +73,9 @@ function openAndReadLibrary(library_path) {
     var read_sym = getSymbolAddress('libc.so', 'read');
     var read = new NativeFunction(read_sym, 'int', ['int', 'pointer', 'long']);
     var rawElf = Memory.alloc(size);
-    var ret = read(fd, rawElf, size);
-    if(ret < 0) {
-        console.log('[+] read --> failed [!]');
+    if(read(fd, rawElf, size) < 0) {
+        console.log('[+] Unable to read ELF [!]');
+        return -1;
     }
     console.log('[+] read --> ' + size + ' bytes [!]');
     console.log(hexdump(rawElf, {
