@@ -71,7 +71,7 @@ function getFileSize(fd) {
         header: true,
         ansi: true
       }));
-    var size = Memory.readU32(statBuff.add(48))
+    var size = Memory.readS32(statBuff.add(0x30))
     if(size > 0) {
         console.log('[+] size of fd --> ' + size.toString());
         return size;
@@ -94,6 +94,7 @@ function openAndReadLibrary(library_path) {
     var fd = mOpen(library_path_ptr, 0);
     if(fd < 0) {
         console.log('[+] Failed to open --> ' + library_path);
+        return -1;
     }
     console.log('[+] fd --> ' + fd.toString());
     var size = getFileSize(fd);
@@ -101,8 +102,9 @@ function openAndReadLibrary(library_path) {
     var read = new NativeFunction(read_sym, 'int', ['int', 'pointer', 'long']);
     var rawElf = Memory.alloc(size);
     var ret = read(fd, rawElf, size);
-    if(ret < 0) {
-        console.log('[+] read --> failed [!]');
+    if(read(fd, rawElf, size) < 0) {
+        console.log('[+] Unable to read ELF [!]');
+        return -1;
     }
     console.log('[+] read --> ' + size + ' bytes [!]');
     console.log(hexdump(rawElf, {
@@ -264,4 +266,5 @@ function elfParser32(elf_path) {
     processSectionHeaders32(rawElf, elfHeader);
 }
 
+// Do It
 elfParser32('/data/data/com.versprite.poc/lib/libnative-lib.so');
